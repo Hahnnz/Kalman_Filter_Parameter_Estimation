@@ -1,52 +1,39 @@
 import numpy as np
+
+def Kalman_Filter(Y, U, A, B, C, D, Q, R, X0, P0):
+    N = Y.shape[1]
+    N_ms, N_st = C.shape
     
-class Linear_Kalman_Filter:
-    def __init__(self, Y, U, A, B, C, D, Q, R, x_0, P_0):
-        self.Y_last = Y
-        self.U_last = U
-        
-        self.A_last = A
-        self.B_last = B
-        self.C_last = C
-        self.D_last = D
-        
-        self.Q_last = Q
-        self.R_last = R
-        self.x_last = x_0
-        self.P_last = P_0
- 
-    def update(self, Y=None, U=None, A=None, B=None, C=None, D=None, Q=None, R=None):
-        # update old data
-        # Consider there is no Prediction values. don't update, just follow dynamics
-        
-        if not U : U = self.U_last
-        else: self.U_last = U
-        
-        if not A : A = self.A_last
-        else: self.A_last = A
-        if not B : B = self.B_last
-        else: self.B_last = B
-        if not C : C = self.C_last
-        else: self.C_last = C
-        if not D : D = self.D_last
-        else: self.D_last = D
-            
-        if not Q: Q = self.Q_last
-        else : self.Q_last = Q
-        if not R : R = self.R_last
-        else : self.R_last = R
-            
-        # Run Linear Kalman Filter Algorithm
-        x = A@self.x_last + B@self.U_last # predict x
-        P = A@self.P_last@A.transpose() + Q # predict p
-        # check optimization for this mul
+    Xp = np.zeros((N_st, N))
+    Pp = np.zeros((N_st, N_st, N))
+    Xf = np.zeros((N_st, N))
+    Pf = np.zeros((N_st, N_st, N))
+    Kf = np.zeros((N_st, N_ms))
 
-        K_k = P@C.transpose() @ np.linalg.inv(C@P@C.transpose() + R) # calc Kalman gain
-        x = x + K_k@(Y - C@x) - self.D_last@self.U_last # calc x
-        P = P - K_k@C@P # calc P
-        
-        # update old data
-        self.x_last = x
-        self.P_last = P 
+    if B.size == 0 : B = 0
 
-        return x
+    #LL = 0
+    
+    for i in range(N):
+        if i == 1 : #initialize
+            Xp[:,0] = X0.reshape(-1)
+            Pp[:,:,0] = P0
+        else :
+            Xp[:,i] = A@Xf[:,i-1] + B@U[:,i-1]
+            Pp[:,:,i] = A@Pf[:,:,i-1]@A.transpose()+Q
+        
+        Rei = C@Pp[:,:,i]@C.transpose() + R
+        Rei = (Rei.transpose() + Rei)/2
+        ReiInv = np.linalg.inv(Rei)
+        Kf = Pp[:,:,i]@C.transpose()@ReiInv # for speed up
+        
+        innov = Y[:,i] - C@Xp[:,i]-D@U[:,i]
+        Xf[:,i] = Xp[:,i] + Kf@innov
+
+        #if narout > 5:
+        #    LL = LL + np.log(np.linalg.det(Rei)) + innov.transpose()*ReiInv@innov  # for speed up
+        #    LL = LL + np.log(abs(np.linalg.det(Rei))) + innov.transpose()/Rei@innov
+        
+    #LL = -.5*LL
+    
+    return Xp, Pp, Xf, Pf, Kf
